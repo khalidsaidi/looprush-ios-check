@@ -1,0 +1,25 @@
+name: Safari autoplay check
+
+# Real WebKit with Apple's gesture-gated media policy (macOS Safari via
+# safaridriver). Proves that playback started after async work (paste →
+# extract → play) is allowed thanks to the in-tap audio unlock, and that
+# the policy is actually enforced on this runner (control case).
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/safari-autoplay.yml"
+      - "scripts/ci/safari-autoplay-check.mjs"
+
+jobs:
+  safari:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: sudo safaridriver --enable
+      - run: npm install --no-save selenium-webdriver@4
+      - run: node scripts/ci/safari-autoplay-check.mjs
