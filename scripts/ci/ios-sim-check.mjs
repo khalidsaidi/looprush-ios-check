@@ -159,7 +159,21 @@ try {
     const open = async (p) => { execFileSync("xcrun", ["simctl", "openurl", UDID, `${BASE}${p}`]); await sleep(4000); };
     const hid = { tap: async (r) => { const [x, y] = toScreen(r.cx, r.cy); idb("ui", "tap", String(x), String(y)); await sleep(1200); }, swipe: async (r, dx) => { const [x0, y] = toScreen(dx < 0 ? r.x + r.w * 0.7 : r.x + r.w * 0.3, r.cy); idb("ui", "swipe", String(x0), String(y), String(x0 + Math.round(dx * cal.scale)), String(y), "--duration", "0.25"); await sleep(1200); }, longPress: async (r) => { const [x, y] = toScreen(r.cx, r.cy); idb("ui", "tap", String(x), String(y), "--duration", "1.2"); await sleep(1200); } };
     await open("/share/ec9hnbi");
-    if (layout.play) { await hid.tap(layout.play); await shot("hid-share-after-play-tap"); }
+    if (layout.play) {
+      await hid.tap(layout.play); await shot("hid-share-after-play-tap");
+      // The product's promise: lock the phone and the sound keeps going, with
+      // controls on the lock screen. Press the side button, then photograph
+      // the lock screen twice: a Now Playing widget is the controls, its
+      // elapsed time moving between the two shots is playback surviving the
+      // lock. Then wake and unlock (no passcode on the simulator: swipe up).
+      try {
+        idb("ui", "button", "LOCK"); await sleep(2500); await shot("hid-locked-1");
+        await sleep(3000); await shot("hid-locked-2");
+        idb("ui", "button", "LOCK"); await sleep(1200);
+        idb("ui", "swipe", String(Math.round(screen.sw / 2)), String(Math.round(screen.sh * 0.9)), String(Math.round(screen.sw / 2)), String(Math.round(screen.sh * 0.3))); await sleep(1500);
+        await shot("hid-after-unlock");
+      } catch (e) { log("lock-screen phase error", String(e?.message || e)); }
+    }
     if (layout.video) { await hid.tap(layout.video); await sleep(2500); await shot("hid-share-after-show-video"); }
     if (layout.saveAll) { await hid.longPress(layout.saveAll); await shot("hid-share-long-press-save-all"); }
     await open("/stacks");
