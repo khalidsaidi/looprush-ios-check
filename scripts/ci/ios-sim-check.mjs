@@ -137,7 +137,20 @@ try {
   // from the DOM phase's layout (same device, same pages); screenshots are the evidence.
   try {
     const layout = {};
-    const grab = async (p, sels) => { await browser.url(`${BASE}${p}`); await sleep(1500); for (const [k, sel] of Object.entries(sels)) { layout[k] = await center(sel); } };
+    // Phase 2 opens each page fresh and UNSCROLLED, so measure it that way.
+    // Measuring after scrollIntoView put Play at y=357 while the unscrolled
+    // page had it at y=525, and the real tap landed on the card above it
+    // (run 34063970764, 12-hid-share-after-play-tap.png: still READY).
+    const grab = async (p, sels) => {
+      await browser.url(`${BASE}${p}`); await sleep(1500);
+      await browser.execute(() => window.scrollTo(0, 0)); await sleep(300);
+      const vh = await browser.execute(() => innerHeight);
+      for (const [k, sel] of Object.entries(sels)) {
+        const r = await rect(sel);
+        layout[k] = r && r.y >= 0 && r.y + r.h <= vh ? r : null;
+        if (r && !layout[k]) log("phase2: off-screen at scroll 0, skipped", k, JSON.stringify(r));
+      }
+    };
     await grab("/share/ec9hnbi", { play: 'button[aria-label="Play"]', video: '[data-testid="video-toggle"]', saveAll: '[data-testid="save-to-guest-library"]' });
     await grab("/stacks", { tile: 'a[href^="/stacks/"]' });
     log("phase2 layout", JSON.stringify(layout));
