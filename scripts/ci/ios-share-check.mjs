@@ -58,10 +58,17 @@ if (!layout) { console.log("NO-LAYOUT"); process.exit(1); }
 execFileSync("xcrun", ["simctl", "openurl", UDID, addUrl(URL_)]);
 await sleep(12000); shot("p2-stack-before-share");
 const px = Math.round((layout.x + layout.w / 2) * cal.scale), py = Math.round(cal.top + (layout.y + layout.h / 2) * cal.scale);
+// What the accessibility tree has under the finger, so a tap that does
+// nothing can be told apart from a tap that landed somewhere else.
+try { log("under finger:", idb("ui", "describe-point", String(px), String(py)).replace(/\s+/g, " ").slice(0, 300)); } catch (e) { log("describe-point failed", String(e?.message || e).slice(0, 120)); }
 idb("ui", "tap", String(px), String(py)); const tTap = Date.now();
 log(`phase2: tapped ${JSON.stringify(layout.label)} at ${px},${py}`);
 let prev = 0;
 for (const at of [1200, 3000, 6000, 10000]) { await sleep(at - prev); prev = at; shot(`p2-share-plus-${(at / 1000).toFixed(1)}s`); }
+// A second tap tells a lost first tap (harness) apart from a broken button (product).
+try { log("under finger (2nd):", idb("ui", "describe-point", String(px), String(py)).replace(/\s+/g, " ").slice(0, 300)); } catch { /* best effort */ }
+idb("ui", "tap", String(px), String(py)); log("phase2: tapped again");
+prev = 0; for (const at of [3000, 8000]) { await sleep(at - prev); prev = at; shot(`p2-second-tap-plus-${(at / 1000).toFixed(1)}s`); }
 // A share sheet, if one opened, covers the page: drag it away and look again.
 try { idb("ui", "swipe", "200", "500", "200", "850", "--duration", "0.3"); await sleep(1500); shot("p2-after-dismiss"); } catch (e) { log("dismiss error", String(e?.message || e)); }
 
