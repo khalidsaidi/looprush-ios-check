@@ -80,8 +80,12 @@ try {
   let playing = null; for (let i = 0; i < 30; i++) { await sleep(300); playing = await browser.execute(() => { const a = document.querySelector("audio"); return { paused: a?.paused, t: a?.currentTime, status: document.querySelector('[data-testid="player-status"]')?.innerText }; }); if (playing.paused === false && playing.t > 0.3) break; }
   if (playing?.paused === false) note("ok", "share tap Play → audio playing", playing); else note("friction", "share tap Play did not start audio", playing);
   await shot("share-playing");
+  // The sticky bar only appears once the main transport has scrolled out of
+  // view (it is a now-playing summary for the long list, not a second copy).
+  await browser.execute(() => window.scrollTo(0, document.body.scrollHeight)); await sleep(900);
   const bar = await rect('[data-testid="bottom-player"]');
-  note(bar && Math.abs(bar.y + bar.h - env.vh) < 2 ? "ok" : "friction", "bottom bar sits at viewport bottom", { bar, vh: env.vh });
+  note(bar && Math.abs(bar.y + bar.h - env.vh) < 2 ? "ok" : "friction", "bottom bar sits at viewport bottom once the transport is scrolled away", { bar, vh: env.vh });
+  await browser.execute(() => window.scrollTo(0, 0)); await sleep(600);
   await tap('[data-testid="video-toggle"]'); await sleep(2500);
   const vs = await rect('[data-testid="video-surface"]'); const vis = vs && vs.y >= 0 && vs.y + vs.h <= env.vh;
   note(vis ? "ok" : "friction", "Show video brings the video into view", vs);
