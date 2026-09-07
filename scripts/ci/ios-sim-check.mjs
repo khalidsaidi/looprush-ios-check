@@ -98,7 +98,9 @@ try {
   await browser.execute(() => { const b = [...document.querySelectorAll("button")].find(x => /^\+?\s*save$/i.test(x.innerText.trim())); b?.setAttribute("data-probe", "rowsave"); });
   await tap('[data-probe="rowsave"]'); await sleep(500);
   const toast = await browser.execute(() => { const t = [...document.querySelectorAll("div,p,span")].find(e => /added to|already in/i.test(e.innerText || "") && getComputedStyle(e).position === "fixed"); const bar = document.querySelector('[data-testid="bottom-player"]')?.getBoundingClientRect(); return t && { toast: [Math.round(t.getBoundingClientRect().top), Math.round(t.getBoundingClientRect().bottom)], bar: bar && [Math.round(bar.top), Math.round(bar.bottom)], text: t.innerText }; });
-  note(toast && toast.bar && toast.toast[1] <= toast.bar[0] ? "ok" : "friction", "row-save toast clears the bottom bar", toast);
+  // No bar while the main transport is on screen (it waits for the long
+  // scroll): nothing to clear then, so a missing bar is fine.
+  note(toast && (!toast.bar || toast.toast[1] <= toast.bar[0]) ? "ok" : "friction", "row-save toast clears the bottom bar (or there is none to clear)", toast);
   await shot("share-row-toast");
   // 4. Save all → library → swipe tile right (rename) and left (delete).
   await tap('[data-testid="save-to-guest-library"]'); await sleep(2500);
