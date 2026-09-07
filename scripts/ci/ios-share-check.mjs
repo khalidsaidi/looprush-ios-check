@@ -67,6 +67,10 @@ try { idb("ui", "swipe", "200", "500", "200", "850", "--duration", "0.3"); await
 
 // Phase 3: what did the tap actually do? Read the guest library share record.
 let record = null;
+// webdriverio's safaridriver launcher refuses a second start while the first
+// instance lives on; end it before re-attaching.
+try { execFileSync("pkill", ["-x", "safaridriver"]); } catch { /* none running */ }
+await sleep(1500);
 browser = await remote({ logLevel: "error", connectionRetryTimeout: 180000, capabilities: caps });
 try {
   await browser.url(`${BASE}/stacks/saved?internal=1`); await sleep(2500);
