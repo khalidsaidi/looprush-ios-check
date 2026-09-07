@@ -67,8 +67,9 @@ try { idb("ui", "swipe", "200", "500", "200", "850", "--duration", "0.3"); await
 
 // Phase 3: what did the tap actually do? Read the guest library share record.
 let record = null;
-// webdriverio's safaridriver launcher refuses a second start while the first
-// instance lives on; end it before re-attaching.
+// webdriverio's safaridriver launcher keeps the first instance in module
+// state and refuses a second start; stop it through the same package.
+try { const sd = await import("safaridriver"); await sd.stop(); } catch (e) { log("safaridriver stop", String(e?.message || e).slice(0, 120)); }
 try { execFileSync("pkill", ["-x", "safaridriver"]); } catch { /* none running */ }
 await sleep(1500);
 browser = await remote({ logLevel: "error", connectionRetryTimeout: 180000, capabilities: caps });

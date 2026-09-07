@@ -27,14 +27,6 @@ const UDID = process.env.SIM_UDID || "booted";
 const idb = (...args) => execFileSync("idb", [...args, "--udid", UDID], { stdio: ["ignore", "pipe", "pipe"] }).toString();
 const cal = { scale: 1, top: 0 };
 let screen = { sw: 402, sh: 874 };
-// The first real touch during a safaridriver session makes Safari show
-// "Safari is Running an Automated Test" with a Continue Testing button
-// (the bottom button of a centred sheet). Tap it and carry on.
-async function dismissAutomationGuard() {
-  const x = Math.round(screen.sw / 2), y = Math.round(screen.sh * 0.492);
-  log("dismissing automation guard at", x, y);
-  idb("ui", "tap", String(x), String(y)); await sleep(800);
-}
 async function calibrate() {
   const m = await browser.execute(() => ({ vw: innerWidth, vh: innerHeight }));
   const info = JSON.parse(idb("describe", "--json")); const sw = info.screen_dimensions?.width_points ?? 402, sh = info.screen_dimensions?.height_points ?? 874;
@@ -107,8 +99,9 @@ try {
   log("after save all:", await browser.getUrl());
   await browser.url(`${BASE}/stacks`); await sleep(1500);
   await shot("library");
-  const hint = await browser.execute(() => [...document.querySelectorAll("p")].map(p => p.innerText).find(t => /Swipe a stack/.test(t)));
-  note(hint ? "ok" : "friction", "library swipe hint visible on touch device", { hint });
+  // Rename/Delete are visible buttons on every tile now; the swipe is a bonus, so no hint is expected.
+  const tileButtons = await browser.execute(() => document.querySelectorAll('[data-testid="stack-row"] button').length);
+  note(tileButtons > 0 ? "ok" : "friction", "library tiles carry visible Rename/Delete buttons", { tileButtons });
   await swipe('a[href^="/stacks/"]', 140); await shot("tile-swiped-right");
   const rz = await rect('[data-testid="stack-rename-zone"]'); const tileAfter = await rect('a[href^="/stacks/"]');
   note(rz && tileAfter && tileAfter.x > rz.x + 40 ? "ok" : "friction", "swipe right reveals rename zone", { rz, tile: tileAfter });
