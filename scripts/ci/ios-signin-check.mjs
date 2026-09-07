@@ -20,7 +20,10 @@ const UDID = process.env.SIM_UDID || "booted";
 const idb = (...args) => execFileSync("idb", [...args, "--udid", UDID], { stdio: ["ignore", "pipe", "pipe"] }).toString();
 let n = 0; const shot = (name) => { const p = `${OUT}/${String(++n).padStart(2, "0")}-${name}.png`; execFileSync("xcrun", ["simctl", "io", UDID, "screenshot", p]); log("shot", p); };
 // Accessibility text of the whole screen: what page are we on?
-const screenText = () => { try { return JSON.parse(idb("ui", "describe-all", "--json")).map((e) => e.AXLabel || e.AXValue || "").filter(Boolean).join(" | "); } catch { return ""; } };
+const flatten = (list, out = []) => { for (const e of list ?? []) { out.push(e); if (Array.isArray(e.children)) flatten(e.children, out); } return out; };
+const screenText = () => { try { return flatten(JSON.parse(idb("ui", "describe-all", "--json"))).map((e) => [e.AXLabel, e.AXValue, e.title].filter(Boolean).join(" ")).filter(Boolean).join(" | "); } catch { return ""; } };
+// Web content is not always in the accessibility dump; the keyboard is.
+const keyboardUp = (t) => /\| q \| w \| e \|/.test(t);
 const caps = { browserName: "Safari", platformName: "iOS", "safari:useSimulator": true, "safari:deviceType": "iPhone", ...(process.env.SIM_UDID ? { "safari:deviceUDID": process.env.SIM_UDID } : {}) };
 
 const browser = await remote({ logLevel: "error", connectionRetryTimeout: 180000, capabilities: caps });
@@ -41,19 +44,21 @@ const px = Math.round((layout.x + layout.w / 2) * cal.scale), py = Math.round(ca
 idb("ui", "tap", String(px), String(py)); log("tapped Continue with Google");
 // Wait for Google's identifier page.
 let stage = "unknown";
-for (let i = 0; i < 30; i++) { await sleep(1000); const t = screenText(); if (/Email or phone|Choose an account/i.test(t)) { stage = /Choose an account/i.test(t) ? "chooser" : "identifier"; break; } }
+for (let i = 0; i < 40; i++) { await sleep(1000); const t = screenText(); if (/Choose an account/i.test(t)) { stage = "chooser"; break; } if (/Email or phone/i.test(t) || keyboardUp(t)) { stage = "identifier"; break; } }
 log("google stage:", stage); shot("p2-google");
 if (stage === "identifier") {
   // The field is focused on load; type the address and go on.
   idb("ui", "text", EMAIL); await sleep(600); idb("ui", "key", "40"); log("typed e-mail + Next");
-  let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); if (/Enter your password|password/i.test(screenText())) { pw = true; break; } }
-  log("password page:", pw); if (pw) { await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
+  // The password page focuses its field and raises the keyboard again.
+  await sleep(2500); let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); const t = screenText(); if (/password/i.test(t) || keyboardUp(t)) { pw = true; break; } }
+  log("password page:", pw); shot("p2-password-page"); if (pw) { await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
 } else if (stage === "chooser") { log("account chooser shown; taking the first account"); }
 // After the password: Google may ask for a verification code. Poll the relay.
 let done = false; const t0 = Date.now();
 while (Date.now() - t0 < 6 * 60 * 1000) {
   await sleep(2000); const t = screenText();
-  if (/looprush/i.test(t) && /YOUR STACKS|LIBRARY|SIGN OUT/i.test(t)) { done = true; break; }
+  if (/YOUR STACKS|SIGN OUT|LIBRARY/i.test(t)) { done = true; break; }
+  if (Math.round((Date.now() - t0) / 1000) % 20 === 0) { log("waiting; screen:", t.slice(0, 160)); shot("p2-waiting"); }
   if (/verif|code|2-Step|Confirm|Check your/i.test(t)) {
     log("google asks for a code; waiting for the relay…");
     const res = await fetch(`${RELAY}?x=${Date.now()}`).then((r) => r.json()).catch(() => null); const name = res?.fields?.name?.stringValue ?? "";

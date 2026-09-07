@@ -16,9 +16,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const UDID = process.env.SIM_UDID || "booted";
 const idb = (...args) => execFileSync("idb", [...args, "--udid", UDID], { stdio: ["ignore", "pipe", "pipe"] }).toString();
 let n = 0; const shot = (name) => { const p = `${OUT}/${String(++n).padStart(2, "0")}-${name}.png`; execFileSync("xcrun", ["simctl", "io", UDID, "screenshot", p]); log("shot", p); };
-const elements = () => { try { return JSON.parse(idb("ui", "describe-all", "--json")); } catch { return []; } };
+const flatten = (list, out = []) => { for (const e of list ?? []) { out.push(e); if (Array.isArray(e.children)) flatten(e.children, out); } return out; };
+const elements = () => { try { return flatten(JSON.parse(idb("ui", "describe-all", "--json"))); } catch { return []; } };
+const keyboardUp = (t) => /\| q \| w \| e \|/.test(t);
 const screenText = () => elements().map((e) => e.AXLabel || e.AXValue || "").filter(Boolean).join(" | ");
-const find = (re) => elements().find((e) => re.test(`${e.AXLabel ?? ""} ${e.AXValue ?? ""} ${e.title ?? ""}`));
+const find = (re) => elements().find((e) => e.frame && [e.AXLabel, e.AXValue, e.title].filter(Boolean).some((v) => re.test(String(v).trim())));
 const tapEl = (e) => { const f = e.frame; idb("ui", "tap", String(Math.round(f.x + f.width / 2)), String(Math.round(f.y + f.height / 2))); };
 const tapLabel = async (re, what, tries = 10) => { for (let i = 0; i < tries; i++) { const e = find(re); if (e) { tapEl(e); log(`tapped ${what} at ${Math.round(e.frame.x)},${Math.round(e.frame.y)}`); return true; } await sleep(1000); } log(`NOT FOUND: ${what}; screen: ${screenText().slice(0, 240)}`); return false; };
 
@@ -41,18 +43,18 @@ log("app screen:", screenText().slice(0, 240));
 await tapLabel(/^Sign in$/i, "Sign in link", 8); await sleep(4000); shot("app-sign-in");
 if (!(await tapLabel(/Continue with Google/i, "Continue with Google"))) process.exit(1);
 let stage = "unknown";
-for (let i = 0; i < 30; i++) { await sleep(1000); const t = screenText(); if (/Email or phone/i.test(t)) { stage = "identifier"; break; } if (/Choose an account/i.test(t)) { stage = "chooser"; break; } }
+for (let i = 0; i < 40; i++) { await sleep(1000); const t = screenText(); if (/Choose an account/i.test(t)) { stage = "chooser"; break; } if (/Email or phone/i.test(t) || keyboardUp(t)) { stage = "identifier"; break; } }
 log("google stage:", stage); shot("google");
 if (stage === "identifier") {
-  const field = find(/Email or phone/i); if (field) tapEl(field); await sleep(800);
   idb("ui", "text", EMAIL); await sleep(600); idb("ui", "key", "40"); log("typed e-mail + Next");
-  let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); if (/password/i.test(screenText())) { pw = true; break; } }
-  log("password page:", pw); if (pw) { const pf = find(/Enter your password|password/i); if (pf) tapEl(pf); await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
+  await sleep(2500); let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); const t = screenText(); if (/password/i.test(t) || keyboardUp(t)) { pw = true; break; } }
+  log("password page:", pw); shot("password-page"); if (pw) { await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
 }
 let done = false; const t0 = Date.now();
 while (Date.now() - t0 < 6 * 60 * 1000) {
   await sleep(2000); const t = screenText();
   if (/YOUR STACKS|SIGN OUT|Your library/i.test(t)) { done = true; break; }
+  if (Math.round((Date.now() - t0) / 1000) % 20 === 0) { log("waiting; screen:", t.slice(0, 160)); shot("waiting"); }
   if (/verif|code|2-Step|Confirm|Check your/i.test(t)) { const res = await fetch(`${RELAY}?x=${Date.now()}`).then((r) => r.json()).catch(() => null); const code = ((res?.fields?.name?.stringValue ?? "").match(/^code:(\d{4,8})$/) || [])[1]; if (code) { idb("ui", "text", code); await sleep(400); idb("ui", "key", "40"); log("typed relayed code"); await sleep(4000); } }
   if (/Couldn.t sign you in|not secure/i.test(t)) { log("GOOGLE REFUSED:", t.slice(0, 200)); break; }
 }
