@@ -18,18 +18,20 @@ const browser = await remote({ logLevel: "error", connectionRetryTimeout: 180000
 let layout = null, cal = { scale: 1, top: 59 };
 try {
   await browser.url(`${BASE}/?internal=1`); await sleep(2500);
-  await browser.execute((u) => { const el = document.querySelector('[data-testid="landing-paste-form"] input[name="url"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, u); el.dispatchEvent(new Event("input", { bubbles: true })); window.scrollTo(0, 0); }, URL_);
-  await sleep(500);
-  const m = await browser.execute(() => { const b = document.querySelector('[data-testid="landing-paste-submit"]'); const r = b.getBoundingClientRect(); return { vw: innerWidth, vh: innerHeight, x: r.x, y: r.y, w: r.width, h: r.height, value: document.querySelector('[data-testid="landing-paste-form"] input[name="url"]').value.slice(0, 50) }; });
+  await browser.execute(() => window.scrollTo(0, 0)); await sleep(300);
+  const m = await browser.execute(() => { const r = (q) => { const e = document.querySelector(q); const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; }; return { vw: innerWidth, vh: innerHeight, input: r('[data-testid="landing-paste-form"] input[name="url"]'), button: r('[data-testid="landing-paste-submit"]') }; });
   const info = JSON.parse(idb("describe", "--json")); const sw = info.screen_dimensions?.width_points ?? 402; cal.scale = sw / m.vw; layout = m;
   log("phase1", JSON.stringify({ ...m, ...cal }));
-  shot("landing-filled");
 } catch (e) { log("phase1 error", String(e?.message || e).slice(0, 300)); }
 await browser.deleteSession().catch(() => {}); await sleep(1500);
-if (!layout || !layout.value) { console.log("NO-LAYOUT"); process.exit(1); }
-// The field keeps its value across deleteSession (same Safari tab). Real tap.
-const px = Math.round((layout.x + layout.w / 2) * cal.scale), py = Math.round(cal.top + (layout.y + layout.h / 2) * cal.scale);
-idb("ui", "tap", String(px), String(py)); const t0 = Date.now(); log(`HID tap PLAY IT at ${px},${py}`);
-for (const at of [2000, 5000, 9000, 14000, 20000]) { await sleep(at - (Date.now() - t0)); shot(`after-tap-plus-${Math.round(at / 1000)}s`); }
+if (!layout) { console.log("NO-LAYOUT"); process.exit(1); }
+// Phase 2: no automation session. Ending it reloads the tab, so open the
+// landing fresh, then type the link with the real keyboard and press Return.
+execFileSync("xcrun", ["simctl", "openurl", UDID, `${BASE}/?internal=1`]); await sleep(4000);
+const pt = (r) => [Math.round((r.x + r.w / 2) * cal.scale), Math.round(cal.top + (r.y + r.h / 2) * cal.scale)];
+const [ix, iy] = pt(layout.input); idb("ui", "tap", String(ix), String(iy)); await sleep(1200); shot("input-focused");
+idb("ui", "text", URL_); await sleep(800); shot("typed");
+const t0 = Date.now(); idb("ui", "key", "40"); log("HID Return pressed (submit)");
+for (const at of [2000, 5000, 9000, 14000, 20000]) { await sleep(Math.max(0, at - (Date.now() - t0))); shot(`after-submit-plus-${Math.round(at / 1000)}s`); }
 writeFileSync(`${OUT}/landing-run.json`, JSON.stringify({ URL_, layout, cal }, null, 2));
 console.log("DONE — read after-tap-plus-9s/14s: the stack page with PLAYING + elapsed time = audio started from the paste; READY = iOS wanted a second tap.");
