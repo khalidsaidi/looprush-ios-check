@@ -28,6 +28,8 @@ const tapLabel = async (re, what, tries = 10) => { for (let i = 0; i < tries; i+
 execFileSync("xcrun", ["simctl", "openurl", UDID, `${BASE}/?internal=1`]); await sleep(6000); shot("safari-landing");
 if (!(await tapLabel(/^(More|Page Menu|Share)$/i, "Safari menu/share"))) process.exit(1);
 await sleep(1500); shot("safari-menu");
+// Safari's feature tip ("Highlights") can cover the menu; dismiss it and reopen.
+if (find(/dismiss popup/i)) { await tapLabel(/dismiss popup/i, "dismiss tip"); await sleep(1200); await tapLabel(/^(More|Page Menu|Share)$/i, "Safari menu again"); await sleep(1500); shot("safari-menu-2"); }
 if (find(/^Share…?$/i)) { await tapLabel(/^Share…?$/i, "Share"); await sleep(2000); }
 shot("share-sheet");
 let added = await tapLabel(/Add to Home Screen/i, "Add to Home Screen", 5);
@@ -47,7 +49,11 @@ for (let i = 0; i < 40; i++) { await sleep(1000); const t = screenText(); if (/C
 log("google stage:", stage); shot("google");
 if (stage === "identifier") {
   idb("ui", "text", EMAIL); await sleep(600); idb("ui", "key", "40"); log("typed e-mail + Next");
-  await sleep(2500); let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); const t = screenText(); if (/password/i.test(t) || keyboardUp(t)) { pw = true; break; } }
+  // Google's password page does not focus its field on iOS; tap where the
+  // field sits (same layout on every iPhone width), which raises the keyboard.
+  await sleep(6000); const info = JSON.parse(idb("describe", "--json")); const sw = info.screen_dimensions?.width_points ?? 402, sh = info.screen_dimensions?.height_points ?? 874;
+  idb("ui", "tap", String(Math.round(sw * 0.5)), String(Math.round(sh * 0.477))); await sleep(1200);
+  let pw = false; for (let i = 0; i < 15; i++) { await sleep(1000); const t = screenText(); if (keyboardUp(t)) { pw = true; break; } idb("ui", "tap", String(Math.round(sw * 0.5)), String(Math.round(sh * 0.477))); }
   log("password page:", pw); shot("password-page"); if (pw) { await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
 }
 let done = false; const t0 = Date.now();

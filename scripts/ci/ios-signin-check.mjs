@@ -50,7 +50,11 @@ if (stage === "identifier") {
   // The field is focused on load; type the address and go on.
   idb("ui", "text", EMAIL); await sleep(600); idb("ui", "key", "40"); log("typed e-mail + Next");
   // The password page focuses its field and raises the keyboard again.
-  await sleep(2500); let pw = false; for (let i = 0; i < 20; i++) { await sleep(1000); const t = screenText(); if (/password/i.test(t) || keyboardUp(t)) { pw = true; break; } }
+  // Google's password page does not focus its field on iOS; tap where the
+  // field sits (same layout on every iPhone width), which raises the keyboard.
+  await sleep(6000); const info = JSON.parse(idb("describe", "--json")); const sw = info.screen_dimensions?.width_points ?? 402, sh = info.screen_dimensions?.height_points ?? 874;
+  idb("ui", "tap", String(Math.round(sw * 0.5)), String(Math.round(sh * 0.477))); await sleep(1200);
+  let pw = false; for (let i = 0; i < 15; i++) { await sleep(1000); const t = screenText(); if (keyboardUp(t)) { pw = true; break; } idb("ui", "tap", String(Math.round(sw * 0.5)), String(Math.round(sh * 0.477))); }
   log("password page:", pw); shot("p2-password-page"); if (pw) { await sleep(800); idb("ui", "text", PASSWORD); await sleep(500); idb("ui", "key", "40"); log("typed password + Next (not shown)"); }
 } else if (stage === "chooser") { log("account chooser shown; taking the first account"); }
 // After the password: Google may ask for a verification code. Poll the relay.
