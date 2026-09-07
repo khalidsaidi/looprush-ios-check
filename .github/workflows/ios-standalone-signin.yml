@@ -1,0 +1,46 @@
+name: iOS Home Screen app Google sign-in
+
+# Mobile Safari on a real iOS Simulator (Xcode on the macOS runner), driven
+# through safaridriver with touch pointer actions: the closest thing to a
+# thumb on an iPhone that CI can give. Uploads screenshots for a human to look at.
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-sim:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: List simulators
+        run: xcrun simctl list devices available | grep -E "iPhone" | head -20
+      - name: Boot a simulator ahead of time (safaridriver's own launch times out)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; c=[x for k,v in d.items() if "iOS" in k for x in v if x["name"]=="iPhone 17" and x["isAvailable"]]; print(c[0]["udid"])')
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl openurl "$UDID" "https://looprush2.com/?internal=1" || true
+          sleep 10
+      - name: Install idb (real HID taps and swipes on the simulator)
+        run: |
+          brew tap facebook/fb
+          brew trust facebook/fb || true
+          brew install idb-companion
+          pip3 install --break-system-packages fb-idb
+          idb list-targets | head -5
+      - run: sudo safaridriver --enable
+      - run: npm install --no-save webdriverio@9
+      - name: Drive Mobile Safari
+        env:
+          SIGNIN_EMAIL: khalidsaidi66@gmail.com
+          SIGNIN_PASSWORD: ${{ secrets.SIGNIN_PASSWORD }}
+        run: node scripts/ci/ios-standalone-signin-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-standalone-signin-shots
+          path: ios-sim-shots/
